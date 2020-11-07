@@ -1,0 +1,120 @@
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: contrail
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+ name: contrail-control-serviceaccount
+ namespace: contrail
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: contrail-control-role
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: contrail-control-rolebinding
+subjects:
+- kind: ServiceAccount
+  name: contrail-control-serviceaccount
+  namespace: contrail
+roleRef:
+  kind: ClusterRole
+  name: contrail-control-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contrail-control-configmap
+  namespace: contrail
+data:
+  contrail-control.conf: |
+    [DEFAULT]
+    log_level=SYS_DEBUG
+    hostname=HOST_NAME
+    [CONFIGDB]
+    config_db_use_k8s=1
+    config_db_use_ssl=1
+    config_db_server_list=server:port
+    config_db_ca_certs=/root/projects/contrail-config-ng/contrail/hack/kind-kind.pem
+    [SANDESH]
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: contrail-control-secret
+  namespace: contrail
+data:
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contrail-control
+  namespace: contrail
+  labels:
+    app: contrail-control
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: contrail-control
+  template:
+    metadata:
+      labels:
+        app: contrail-control
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      volumes:
+      - name: config-volume
+        configMap:
+          name: contrail-control-configmap
+      - name: contrail-control-secret
+        secret:
+          secretName: contrail-control-secret
+      serviceAccountName: contrail-control-serviceaccount
+      initContainers:
+      - name: contrail-init
+        imagePullPolicy: Always
+        image: michaelhenkel/contrail-init:distroless
+        command: ["sh","-c","/contrail-init"]
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: PODIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+      containers:
+      - name: contrail-control
+        image: michaelhenkel/contrail-control-node:distroless
+        imagePullPolicy: Always
+        command: ["sh","-c","/contrail-control --conf_file /etc/contrail/contrail-control.conf"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/contrail
+        - name: contrail-control-secret
+          mountPath: "/etc/contrailkeys"
