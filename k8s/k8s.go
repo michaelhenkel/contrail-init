@@ -77,7 +77,7 @@ func (k *K8S) CreateCertificate() error {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      k.Type + " -secret",
+			Name:      k.Type + "-secret",
 			Namespace: k.Namespace,
 		},
 		Data: map[string][]byte{k.Type + "-key-" + k.Hostname + ".pem": privateKey},
