@@ -107,8 +107,8 @@ spec:
           mountPath: /etc/podinfo
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        command: ["sh","-c","while true; do sleep 10;done"]
-        #command: ["sh","-c","/contrail-init"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["sh","-c","/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -134,8 +134,8 @@ spec:
       - name: contrail-control
         image: michaelhenkel/contrail-control:distroless
         imagePullPolicy: Always
-        #command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
-        command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -196,7 +196,36 @@ spec:
           mountPath: /etc/podinfo
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        command: ["sh","-c","while true; do sleep 10;done"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["sh","-c","/contrail-init"]
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: PODNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: PODIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: APP
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app']
+      - name: contrail-vrouter-kernel
+        volumeMounts:
+        - name: podinfo
+          mountPath: /etc/podinfo
+        imagePullPolicy: Always
+        image: michaelhenkel/contrail-vrouter
+        command: ["sh","-c","/init-kmod"]
         #command: ["sh","-c","/contrail-init"]
         env:
         - name: HOSTNAME
@@ -222,7 +251,7 @@ spec:
       containers:
       - name: contrail-vrouter-agent
         image: michaelhenkel/contrail-agent:distroless
-        command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
         env:
         - name: HOSTNAME
           valueFrom:

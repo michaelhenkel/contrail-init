@@ -77,17 +77,16 @@ func (k *K8S) SetOwnerNameLabel() error {
 }
 
 func (k *K8S) CreateConfig(configData string) error {
-	prefix := k.OwnerName
 	configMap := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      prefix + "-configmap",
+			Name:      k.OwnerName + "-configmap",
 			Namespace: k.Namespace,
 		},
-		Data: map[string]string{prefix + "-" + k.Hostname + ".conf": configData},
+		Data: map[string]string{k.Type + "-" + k.Hostname + ".conf": configData},
 	}
 
 	ctx := context.Background()

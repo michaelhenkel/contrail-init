@@ -38,10 +38,8 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	hostname := os.Getenv("HOSTNAME")
+
 	namespace := os.Getenv("NAMESPACE")
-	service := os.Getenv("APP")
-	podname := os.Getenv("PODNAME")
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -74,15 +72,16 @@ func main() {
 		ClusterIP:   kubernetesService.Spec.ClusterIP,
 		ClusterPort: kubernetesService.Spec.Ports[0].Port,
 		Namespace:   namespace,
-		Hostname:    hostname,
+		Hostname:    os.Getenv("HOSTNAME"),
 		ClientSet:   clientset,
 		Service:     kubernetesService,
-		PodName:     podname,
+		PodName:     os.Getenv("PODNAME"),
+		Type:        os.Getenv("APP"),
 	}
 
 	var contrailInit ContrailInit
 
-	switch service {
+	switch os.Getenv("APP") {
 	case "contrail-control":
 		controlInit := &control.Control{
 			K8S: k8s,
