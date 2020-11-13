@@ -194,7 +194,6 @@ func (k *K8S) csrSigned(csr *v1beta1.CertificateSigningRequest) (bool, *[]byte, 
 		fmt.Println("Waiting for CSR to be signed...")
 		return false, nil, nil
 	}
-	fmt.Println("csr signed:", string(csr.Status.Certificate))
 	signedCert := csr.Status.Certificate
 	return true, &signedCert, nil
 }

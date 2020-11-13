@@ -12,15 +12,14 @@ type Control struct {
 
 func (c *Control) CreateConfig() error {
 	controlConfig := `[DEFAULT]
-	log_level=SYS_DEBUG
-	hostname=` + c.K8S.Hostname + `
-	[CONFIGDB]
-	config_db_use_k8s=1
-	config_db_use_ssl=1
-	config_db_server_list=` + c.K8S.ClusterIP + `:` + strconv.Itoa(int(c.K8S.ClusterPort)) + `
-	config_db_ca_certs=/etc/contrailkeys/contrail-control-pem-` + c.K8S.Hostname + `.pem
-	[SANDESH]
-	`
+log_level=SYS_DEBUG
+hostname=` + c.K8S.Hostname + `
+[CONFIGDB]
+config_db_use_k8s=1
+config_db_use_ssl=1
+config_db_server_list=` + c.K8S.ClusterIP + `:` + strconv.Itoa(int(c.K8S.ClusterPort)) + `
+config_db_ca_certs=/etc/contrailkeys/contrail-control-pem-` + c.K8S.Hostname + `.pem
+[SANDESH]`
 	return c.K8S.CreateConfig(controlConfig)
 }
 
