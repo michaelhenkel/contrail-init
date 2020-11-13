@@ -1,53 +1,237 @@
 package k8s
 
 import (
-	core "k8s.io/api/core/v1"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
+	"io/ioutil"
+	"net"
+	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/api/certificates/v1beta1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"k8s.io/client-go/kubernetes"
 )
 
-// Kubernetes is used to create and update meaningful objects
-type Kubernetes struct {
-	client client.Client
-	scheme *runtime.Scheme
+type K8S struct {
+	ClusterIP   string
+	ClusterPort int32
+	Namespace   string
+	Hostname    string
+	ClientSet   *kubernetes.Clientset
+	Service     *corev1.Service
+	Type        string
 }
 
-type object interface {
-	GetName() string
-	GetUID() types.UID
-	GetOwnerReferences() []meta.OwnerReference
-	SetOwnerReferences(references []meta.OwnerReference)
-	runtime.Object
-}
-
-// New is used to create a new Kubernetes
-func New(client client.Client, scheme *runtime.Scheme) *Kubernetes {
-	return &Kubernetes{
-		client: client,
-		scheme: scheme,
+func (k *K8S) CreateConfig(configData string) error {
+	prefix := k.Type
+	configMap := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      prefix + "-configmap",
+			Namespace: k.Namespace,
+		},
+		Data: map[string]string{prefix + "-" + k.Hostname + ".conf": configData},
 	}
+
+	ctx := context.Background()
+	_, err := k.ClientSet.CoreV1().ConfigMaps(k.Namespace).Get(ctx, configMap.Name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			_, err = k.ClientSet.CoreV1().ConfigMaps(k.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	} else {
+		_, err = k.ClientSet.CoreV1().ConfigMaps(k.Namespace).Update(ctx, configMap, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// Owner is used to create Owner object
-func (k *Kubernetes) Owner(owner object) *Owner {
-	return &Owner{owner: owner, client: k.client, scheme: k.scheme}
+func (k *K8S) CreateCertificate() error {
+	csrRequest, privateKey, err := generateCsr(k.ClusterIP, k.Hostname)
+	if err != nil {
+		return err
+	}
+
+	secret := &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      k.Type + " -secret",
+			Namespace: k.Namespace,
+		},
+		Data: map[string][]byte{k.Type + "-key-" + k.Hostname + ".pem": privateKey},
+	}
+
+	csr := &v1beta1.CertificateSigningRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: k.Type + "-csr-" + k.Hostname,
+		},
+		Spec: v1beta1.CertificateSigningRequestSpec{
+			Groups:  []string{"system:authenticated"},
+			Request: csrRequest,
+			Usages: []v1beta1.KeyUsage{
+				"digital signature",
+				"key encipherment",
+				"server auth",
+				"client auth",
+			},
+		},
+	}
+
+	ctx := context.Background()
+	_, err = k.ClientSet.CertificatesV1beta1().CertificateSigningRequests().Create(ctx, csr, metav1.CreateOptions{})
+	if err != nil {
+		return err
+	}
+
+	for {
+		created, err := k.csrCreated(csr)
+		if created {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		time.Sleep(time.Duration(time.Second * 2))
+	}
+
+	var conditionType v1beta1.RequestConditionType
+	conditionType = "Approved"
+	csrCondition := v1beta1.CertificateSigningRequestCondition{
+		Type:    conditionType,
+		Reason:  "ContrailApprove",
+		Message: "This Certificate was approved by operator approve.",
+	}
+
+	csr.Status.Conditions = []v1beta1.CertificateSigningRequestCondition{csrCondition}
+	_, err = k.ClientSet.CertificatesV1beta1().CertificateSigningRequests().UpdateApproval(ctx, csr, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	var signedCert *[]byte
+	var signed bool
+	for {
+		signed, signedCert, err = k.csrSigned(csr)
+		if signed {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		time.Sleep(time.Duration(time.Second * 2))
+	}
+
+	var pemClient []byte
+	pemClient = append(pemClient, *signedCert...)
+	pemClient = append(pemClient, privateKey...)
+	secret.Data[k.Type+"-pem-"+k.Hostname+".pem"] = pemClient
+
+	_, err = k.ClientSet.CoreV1().Secrets(k.Namespace).Get(ctx, secret.GetName(), metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			_, err = k.ClientSet.CoreV1().Secrets(k.Namespace).Create(ctx, secret, metav1.CreateOptions{})
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	} else {
+		_, err = k.ClientSet.CoreV1().Secrets(k.Namespace).Update(ctx, secret, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+	}
+
+	if err = k.ClientSet.CertificatesV1beta1().CertificateSigningRequests().Delete(ctx, csr.Name, metav1.DeleteOptions{}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// ConfigMap is used to create ConfigMap object
-func (k *Kubernetes) ConfigMap(name, ownerType string, owner v1.Object) *ConfigMap {
-	return &ConfigMap{name: name, ownerType: ownerType, owner: owner, client: k.client, scheme: k.scheme}
+func (k *K8S) csrCreated(csr *v1beta1.CertificateSigningRequest) (bool, error) {
+	ctx := context.Background()
+	csr, err := k.ClientSet.CertificatesV1beta1().CertificateSigningRequests().Get(ctx, csr.Name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
-// Secret is used to create Secret object
-func (k *Kubernetes) Secret(name, ownerType string, owner v1.Object) *Secret {
-	return &Secret{name: name, ownerType: ownerType, owner: owner, client: k.client, scheme: k.scheme}
+func (k *K8S) csrSigned(csr *v1beta1.CertificateSigningRequest) (bool, *[]byte, error) {
+	ctx := context.Background()
+	csr, err := k.ClientSet.CertificatesV1beta1().CertificateSigningRequests().Get(ctx, csr.Name, metav1.GetOptions{})
+	if err != nil {
+		return false, nil, err
+	}
+	if csr.Status.Certificate == nil || len(csr.Status.Certificate) == 0 {
+		fmt.Println("Waiting for CSR to be signed...")
+		return false, nil, nil
+	}
+	fmt.Println("csr signed:", string(csr.Status.Certificate))
+	signedCert := csr.Status.Certificate
+	return true, &signedCert, nil
 }
 
-// Service is used to create Service object
-func (k *Kubernetes) Service(name string, servType core.ServiceType, ports map[int32]string, ownerType string, owner v1.Object) *Service {
-	return &Service{name: name, servType: servType, ports: ports, ownerType: ownerType, owner: owner, client: k.client, scheme: k.scheme}
+func generateCsr(ipAddress string, hostname string) ([]byte, []byte, error) {
+	certPrivKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	certPrivKeyPEM := new(bytes.Buffer)
+	pem.Encode(certPrivKeyPEM, &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
+	})
+	privateKeyBuffer, err := ioutil.ReadAll(certPrivKeyPEM)
+	if err != nil {
+		fmt.Println("cannot read certPrivKeyPEM to privateKeyBuffer")
+		return nil, nil, err
+	}
+	csrTemplate := x509.CertificateRequest{
+		Subject: pkix.Name{
+			CommonName:         "kubernetes-admin",
+			Country:            []string{"US"},
+			Province:           []string{"CA"},
+			Locality:           []string{"Sunnyvale"},
+			Organization:       []string{"system:masters"},
+			OrganizationalUnit: []string{"Contrail"},
+		},
+		DNSNames:       []string{hostname},
+		EmailAddresses: []string{"test@email.com"},
+		IPAddresses:    []net.IP{net.ParseIP(ipAddress)},
+	}
+	buf := new(bytes.Buffer)
+	csrBytes, _ := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, certPrivKey)
+	pem.Encode(buf, &pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrBytes})
+	pemBuf, err := ioutil.ReadAll(buf)
+	if err != nil {
+		fmt.Println("cannot read buf to pemBuf")
+		return nil, nil, err
+	}
+
+	return pemBuf, privateKeyBuffer, nil
 }

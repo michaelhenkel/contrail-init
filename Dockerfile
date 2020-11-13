@@ -1,5 +1,3 @@
-FROM gcr.io/distroless/base:debug
-SHELL ["/busybox/sh", "-c"]
-RUN mkdir -p /var/log/contrail
+FROM gcr.io/distroless/base-debian10:debug
 COPY contrail-init /
 

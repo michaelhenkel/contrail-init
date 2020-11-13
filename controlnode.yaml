@@ -82,6 +82,12 @@ spec:
       - effect: NoExecute
         operator: Exists
       volumes:
+      - name: podinfo
+        downwardAPI:
+          items:
+          - path: "labels"
+            fieldRef:
+              fieldPath: metadata.labels
       - name: config-volume
         configMap:
           name: contrail-control-configmap
@@ -91,9 +97,13 @@ spec:
       serviceAccountName: contrail-control-serviceaccount
       initContainers:
       - name: contrail-init
+        volumeMounts:
+        - name: podinfo
+          mountPath: /etc/podinfo
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        command: ["sh","-c","/contrail-init"]
+        command: ["sh","-c","while true; do sleep 10;done"]
+        #command: ["sh","-c","/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -103,16 +113,29 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: PODNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: PODIP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        - name: APP
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app']
       containers:
       - name: contrail-control
-        image: michaelhenkel/contrail-control-node:distroless
+        image: michaelhenkel/contrail-control:distroless
         imagePullPolicy: Always
-        command: ["sh","-c","/contrail-control --conf_file /etc/contrail/contrail-control.conf"]
+        command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
         #command: ["sh","-c","while true; do sleep 10;done"]
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         volumeMounts:
         - name: config-volume
           mountPath: /etc/contrail
