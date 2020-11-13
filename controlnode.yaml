@@ -108,7 +108,7 @@ spec:
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
         #command: ["sh","-c","while true; do sleep 10;done"]
-        command: ["sh","-c","/contrail-init"]
+        command: ["/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -134,8 +134,8 @@ spec:
       - name: contrail-control
         image: michaelhenkel/contrail-control:distroless
         imagePullPolicy: Always
-        command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
-        #command: ["sh","-c","while true; do sleep 10;done"]
+        #command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
+        command: ["sh","-c","while true; do sleep 10;done"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -197,7 +197,7 @@ spec:
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
         #command: ["sh","-c","while true; do sleep 10;done"]
-        command: ["sh","-c","/contrail-init"]
+        command: ["/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -224,9 +224,9 @@ spec:
         - name: podinfo
           mountPath: /etc/podinfo
         imagePullPolicy: Always
-        image: michaelhenkel/contrail-vrouter
-        command: ["sh","-c","/init-kmod"]
-        #command: ["sh","-c","/contrail-init"]
+        image: michaelhenkel/contrail-vrouter:distroless
+        #command: ["sh","-c","/init-kmod"]
+        command: ["sh","-c","echo hello"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -251,7 +251,8 @@ spec:
       containers:
       - name: contrail-vrouter-agent
         image: michaelhenkel/contrail-agent:distroless
-        command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
+        #command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
+        command: ["sh","-c","while true; do sleep 10;done"]
         env:
         - name: HOSTNAME
           valueFrom:
