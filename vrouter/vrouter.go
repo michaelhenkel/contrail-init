@@ -2,6 +2,7 @@ package vrouter
 
 import (
 	"context"
+	"net"
 	"strconv"
 
 	"github.com/michaelhenkel/contrail-init/k8s"
@@ -21,7 +22,38 @@ func (v *Vrouter) CreateConfig() error {
 	vrouterConfig := `[DEFAULT]
 xmppport=` + strconv.Itoa((int(controlNodePort))) + `
 controlnode=` + controlNodeName + ``
+
+	v.K8S.Pod.Labels["controlNodeName"] = controlNodeName
+	if err := v.setInterfaceLabel(); err != nil {
+		return err
+	}
+	if err := v.K8S.UpdatePOD(); err != nil {
+		return err
+	}
 	return v.K8S.CreateConfig(vrouterConfig)
+}
+
+func (v *Vrouter) setInterfaceLabel() error {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return err
+	}
+	for _, iface := range ifaces {
+		ifaceAddresses, err := iface.Addrs()
+		if err != nil {
+			return err
+		}
+		for _, ifaceAddress := range ifaceAddresses {
+			switch addressValue := ifaceAddress.(type) {
+			case *net.IPAddr:
+				if addressValue.IP.String() == v.K8S.PodIP {
+					v.K8S.Pod.Labels["interface"] = iface.Name
+					return nil
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (v *Vrouter) CreateCertificate() error {

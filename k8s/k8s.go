@@ -28,10 +28,21 @@ type K8S struct {
 	Hostname    string
 	ClientSet   *kubernetes.Clientset
 	Service     *corev1.Service
+	Pod         *corev1.Pod
 	Type        string
 	OwnerName   string
 	OwnerLabels map[string]string
 	PodName     string
+	PodIP       string
+}
+
+func (k *K8S) UpdatePOD() error {
+	ctx := context.Background()
+	_, err := k.ClientSet.CoreV1().Pods(k.Namespace).Update(ctx, k.Pod, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (k *K8S) SetOwnerNameLabel() error {

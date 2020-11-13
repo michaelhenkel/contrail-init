@@ -226,7 +226,8 @@ spec:
         imagePullPolicy: Always
         image: michaelhenkel/contrail-vrouter:distroless
         #command: ["sh","-c","/init-kmod"]
-        command: ["sh","-c","echo hello"]
+        #command: ["sh","-c","echo hello"]
+        command: ["sh","-c","while true; do sleep 10;done"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -248,16 +249,29 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['app']
+        - name: INTERFACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['interface']
+        - name: CONTROLNODENAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['controlNodeName']
       containers:
       - name: contrail-vrouter-agent
         image: michaelhenkel/contrail-agent:distroless
-        #command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
+        #command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-vrouter-agent --conf_file /etc/contrail/contrail-vrouter-${HOSTNAME}.conf"]
         command: ["sh","-c","while true; do sleep 10;done"]
         env:
         - name: HOSTNAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/contrail
+        - name: secret-volume
+          mountPath: "/etc/contrailkeys"
       volumes:
       - name: podinfo
         downwardAPI:

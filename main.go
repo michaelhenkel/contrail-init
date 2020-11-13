@@ -67,6 +67,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, os.Getenv("PODNAME"), metav1.GetOptions{})
+	if err != nil {
+		panic(err)
+	}
 
 	k8s := &k8s.K8S{
 		ClusterIP:   kubernetesService.Spec.ClusterIP,
@@ -77,6 +81,8 @@ func main() {
 		Service:     kubernetesService,
 		PodName:     os.Getenv("PODNAME"),
 		Type:        os.Getenv("APP"),
+		PodIP:       os.Getenv("PODIP"),
+		Pod:         pod,
 	}
 
 	var contrailInit ContrailInit
