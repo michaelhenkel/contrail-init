@@ -29,10 +29,48 @@ type K8S struct {
 	ClientSet   *kubernetes.Clientset
 	Service     *corev1.Service
 	Type        string
+	OwnerName   string
+	OwnerLabels map[string]string
+	PodName     string
+}
+
+func (k *K8S) SetOwnerNameLabel(kind string) error {
+	ctx := context.Background()
+	pod, err := k.ClientSet.CoreV1().Pods(k.Namespace).Get(ctx, k.PodName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	for _, ownerRefernce := range pod.OwnerReferences {
+		switch kind {
+		case "Daemonset":
+			daemonSet, err := k.ClientSet.AppsV1().DaemonSets(k.Namespace).Get(ctx, ownerRefernce.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			k.OwnerLabels = daemonSet.Labels
+			k.OwnerName = daemonSet.Name
+		case "Deployment":
+			deployment, err := k.ClientSet.AppsV1().Deployments(k.Namespace).Get(ctx, ownerRefernce.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			k.OwnerLabels = deployment.Labels
+			k.OwnerName = deployment.Name
+		case "StatefulSet":
+			statefulSet, err := k.ClientSet.AppsV1().StatefulSets(k.Namespace).Get(ctx, ownerRefernce.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			k.OwnerLabels = statefulSet.Labels
+			k.OwnerName = statefulSet.Name
+		}
+	}
+	fmt.Println("Owner name:", k.OwnerName)
+	return nil
 }
 
 func (k *K8S) CreateConfig(configData string) error {
-	prefix := k.Type
+	prefix := k.OwnerName
 	configMap := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
@@ -77,15 +115,15 @@ func (k *K8S) CreateCertificate() error {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      k.Type + "-secret",
+			Name:      k.OwnerName + "-secret",
 			Namespace: k.Namespace,
 		},
-		Data: map[string][]byte{k.Type + "-key-" + k.Hostname + ".pem": privateKey},
+		Data: map[string][]byte{k.OwnerName + "-key-" + k.Hostname + ".pem": privateKey},
 	}
 
 	csr := &v1beta1.CertificateSigningRequest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: k.Type + "-csr-" + k.Hostname,
+			Name: k.OwnerName + "-csr-" + k.Hostname,
 		},
 		Spec: v1beta1.CertificateSigningRequestSpec{
 			Groups:  []string{"system:authenticated"},
@@ -146,7 +184,7 @@ func (k *K8S) CreateCertificate() error {
 	var pemClient []byte
 	pemClient = append(pemClient, *signedCert...)
 	pemClient = append(pemClient, privateKey...)
-	secret.Data[k.Type+"-pem-"+k.Hostname+".pem"] = pemClient
+	secret.Data[k.OwnerName+"-pem-"+k.Hostname+".pem"] = pemClient
 
 	_, err = k.ClientSet.CoreV1().Secrets(k.Namespace).Get(ctx, secret.GetName(), metav1.GetOptions{})
 	if err != nil {

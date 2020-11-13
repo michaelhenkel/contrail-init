@@ -26,3 +26,7 @@ config_db_ca_certs=/etc/contrailkeys/contrail-control-pem-` + c.K8S.Hostname + `
 func (c *Control) CreateCertificate() error {
 	return c.K8S.CreateCertificate()
 }
+
+func (c *Control) SetOwnerNameLabel() error {
+	return c.K8S.SetOwnerNameLabel("Deployment")
+}

@@ -30,6 +30,7 @@ var err error
 type ContrailInit interface {
 	CreateConfig() error
 	CreateCertificate() error
+	SetOwnerNameLabel() error
 }
 
 func main() {
@@ -40,6 +41,7 @@ func main() {
 	hostname := os.Getenv("HOSTNAME")
 	namespace := os.Getenv("NAMESPACE")
 	service := os.Getenv("APP")
+	podname := os.Getenv("PODNAME")
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -75,7 +77,7 @@ func main() {
 		Hostname:    hostname,
 		ClientSet:   clientset,
 		Service:     kubernetesService,
-		Type:        service,
+		PodName:     podname,
 	}
 
 	var contrailInit ContrailInit
@@ -94,6 +96,10 @@ func main() {
 	default:
 		fmt.Println("missing service, control/vrouter are supported")
 		os.Exit(1)
+	}
+
+	if err := contrailInit.SetOwnerNameLabel(); err != nil {
+		panic(err)
 	}
 
 	if err := contrailInit.CreateConfig(); err != nil {
