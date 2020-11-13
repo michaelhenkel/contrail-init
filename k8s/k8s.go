@@ -34,28 +34,36 @@ type K8S struct {
 	PodName     string
 }
 
-func (k *K8S) SetOwnerNameLabel(kind string) error {
+func (k *K8S) SetOwnerNameLabel() error {
 	ctx := context.Background()
 	pod, err := k.ClientSet.CoreV1().Pods(k.Namespace).Get(ctx, k.PodName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	for _, ownerRefernce := range pod.OwnerReferences {
-		switch kind {
-		case "Daemonset":
+		switch ownerRefernce.Kind {
+		case "DaemonSet":
 			daemonSet, err := k.ClientSet.AppsV1().DaemonSets(k.Namespace).Get(ctx, ownerRefernce.Name, metav1.GetOptions{})
 			if err != nil {
 				return err
 			}
 			k.OwnerLabels = daemonSet.Labels
 			k.OwnerName = daemonSet.Name
-		case "Deployment":
-			deployment, err := k.ClientSet.AppsV1().Deployments(k.Namespace).Get(ctx, ownerRefernce.Name, metav1.GetOptions{})
+		case "ReplicaSet":
+			replicaSet, err := k.ClientSet.AppsV1().ReplicaSets(k.Namespace).Get(ctx, ownerRefernce.Name, metav1.GetOptions{})
 			if err != nil {
 				return err
 			}
-			k.OwnerLabels = deployment.Labels
-			k.OwnerName = deployment.Name
+			for _, replicaSetOwnerReference := range replicaSet.OwnerReferences {
+				if replicaSetOwnerReference.Kind == "Deployment" {
+					deployment, err := k.ClientSet.AppsV1().Deployments(k.Namespace).Get(ctx, replicaSetOwnerReference.Name, metav1.GetOptions{})
+					if err != nil {
+						return err
+					}
+					k.OwnerLabels = deployment.Labels
+					k.OwnerName = deployment.Name
+				}
+			}
 		case "StatefulSet":
 			statefulSet, err := k.ClientSet.AppsV1().StatefulSets(k.Namespace).Get(ctx, ownerRefernce.Name, metav1.GetOptions{})
 			if err != nil {
@@ -65,7 +73,6 @@ func (k *K8S) SetOwnerNameLabel(kind string) error {
 			k.OwnerName = statefulSet.Name
 		}
 	}
-	fmt.Println("Owner name:", k.OwnerName)
 	return nil
 }
 

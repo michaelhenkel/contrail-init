@@ -20,8 +20,7 @@ func (v *Vrouter) CreateConfig() error {
 	}
 	vrouterConfig := `[DEFAULT]
 xmppport=` + strconv.Itoa((int(controlNodePort))) + `
-controlnode=` + controlNodeName + `
-	`
+controlnode=` + controlNodeName + ``
 	return v.K8S.CreateConfig(vrouterConfig)
 }
 
@@ -30,7 +29,7 @@ func (v *Vrouter) CreateCertificate() error {
 }
 
 func (v *Vrouter) SetOwnerNameLabel() error {
-	return v.K8S.SetOwnerNameLabel("Daemonset")
+	return v.K8S.SetOwnerNameLabel()
 }
 
 func (v *Vrouter) GetControlNode() (string, int32, error) {

@@ -28,5 +28,5 @@ func (c *Control) CreateCertificate() error {
 }
 
 func (c *Control) SetOwnerNameLabel() error {
-	return c.K8S.SetOwnerNameLabel("Deployment")
+	return c.K8S.SetOwnerNameLabel()
 }
