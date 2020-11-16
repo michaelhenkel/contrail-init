@@ -225,9 +225,12 @@ spec:
           mountPath: /etc/podinfo
         imagePullPolicy: Always
         image: michaelhenkel/contrail-vrouter:distroless
-        #command: ["sh","-c","/init-kmod"]
+        command: ["sh","-c","/init_kmod.sh create"]
         #command: ["sh","-c","echo hello"]
-        command: ["sh","-c","while true; do sleep 10;done"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
+        securityContext:
+          capabilities:
+            add: ["CAP_SYS_MODULE","NET_ADMIN"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -253,6 +256,14 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['interface']
+        - name: VHOSTEXISTS
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['vhostExists']
+        - name: MAC
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['mac']
         - name: CONTROLNODENAME
           valueFrom:
             fieldRef:
@@ -267,6 +278,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: PODIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
         volumeMounts:
         - name: config-volume
           mountPath: /etc/contrail
