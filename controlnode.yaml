@@ -235,7 +235,7 @@ spec:
         image: michaelhenkel/contrail-vrouter:distroless
         command: ["sh","-c","/init_kmod.sh create"]
         #command: ["sh","-c","echo hello"]
-        #command: ["sh","-c","while true; do sleep 10;done"]
+        #command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
         securityContext:
           capabilities:
             add: ["CAP_SYS_MODULE","NET_ADMIN"]
@@ -279,8 +279,12 @@ spec:
       containers:
       - name: contrail-vrouter-agent
         image: michaelhenkel/contrail-agent:distroless
-        #command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-vrouter-agent --conf_file /etc/contrail/contrail-vrouter-${HOSTNAME}.conf"]
+        #command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-vrouter-agent --config_file /etc/contrail/contrail-vrouter-${HOSTNAME}.conf"]
         command: ["sh","-c","while true; do sleep 10;done"]
+        securityContext:
+          privileged: true
+          capabilities:
+            add: ["CAP_SYS_MODULE","NET_ADMIN"]
         env:
         - name: HOSTNAME
           valueFrom:

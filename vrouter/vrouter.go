@@ -116,7 +116,7 @@ func getInterface(podIP string) (string, error) {
 			}
 			for _, ifaceAddress := range ifaceAddresses {
 				switch addressValue := ifaceAddress.(type) {
-				case *net.IPAddr:
+				case *net.IPNet:
 					if addressValue.IP.String() == podIP {
 						intf = iface.Name
 					}
