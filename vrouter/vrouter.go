@@ -2,10 +2,12 @@ package vrouter
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"strconv"
 	"strings"
@@ -25,75 +27,72 @@ func (v *Vrouter) CreateConfig() error {
 		return err
 	}
 	v.K8S.Pod.Labels["controlNodeName"] = controlNodeName
-	if err := v.setInterfaceLabel(); err != nil {
+	intf, err := getInterface(v.K8S.PodIP)
+	if err != nil {
 		return err
+	}
+	mask, err := getCIDR(v.K8S.PodIP)
+	if err != nil {
+		return err
+	}
+	var gateway string
+	if gw, ok := v.K8S.OwnerLabels["Gateway"]; ok {
+		gateway = gw
+	} else {
+		gateway, err = getGateway()
+		if err != nil {
+			return err
+		}
 	}
 	if err := v.K8S.UpdatePOD(); err != nil {
 		return err
 	}
-	if err := v.GetCIDR(); err != nil {
-		return err
-	}
-	if err := v.GetGateway(); err != nil {
-		return err
-	}
 	vrouterConfig := `[CONTROL-NODE]
-	server=` + controlNodeName + `:` + strconv.Itoa((int(controlNodePort))) + `
-	
-	[DEFAULT]	
-	debug=1
-	hostname=` + v.K8S.Hostname + `
-	# http_server_port=8085
-	# log_category=
-	# log_file=/var/log/contrail/vrouter.log
-	# log_level=SYS_DEBUG
-	# log_local=0
-	# log_flow=0
-	# tunnel_type=
-	# headless_mode=
-	
-	[DISCOVERY]
-	
-	[DNS]
-	# server=10.0.0.1 10.0.0.2
-	
-	[HYPERVISOR]
-	# type=kvm
-	
-	[FLOWS]
-	# max_vm_flows=
-	# max_system_linklocal_flows=4096
-	# max_vm_linklocal_flows=1024
-	
-	[METADATA]
-	# metadata_proxy_secret=contrail
-	
-	[NETWORKS]
-	control_network_ip=
-	
-	[VIRTUAL-HOST-INTERFACE]
-	name=vhost0
-	ip=` + v.K8S.PodIP + `/` + v.K8S.Pod.Labels["mask"] + `
-	gateway=10.1.1.254
-	physical_interface=` + v.K8S.Pod.Labels["interface"] + `
-	
-	[GATEWAY-0]
-	
-	[GATEWAY-1]
-
-	
-	[SERVICE-INSTANCE]
-	netns_command=/usr/bin/opencontrail-vrouter-netns
-	#netns_workers=1
-	#netns_timeout=30`
+server=` + controlNodeName + `:` + strconv.Itoa((int(controlNodePort))) + `
+[DEFAULT]
+debug=1
+hostname=` + v.K8S.Hostname + `
+# http_server_port=8085
+# log_category=
+# log_file=/var/log/contrail/vrouter.log
+# log_level=SYS_DEBUG
+# log_local=0
+# log_flow=0
+# tunnel_type=
+# headless_mode=
+[DISCOVERY]
+[DNS]
+# server=
+[HYPERVISOR]
+# type=kvm
+[FLOWS]
+# max_vm_flows=
+# max_system_linklocal_flows=4096
+# max_vm_linklocal_flows=1024
+[METADATA]
+# metadata_proxy_secret=contrail
+[NETWORKS]
+control_network_ip=` + v.K8S.PodIP + `
+[VIRTUAL-HOST-INTERFACE]
+name=vhost0
+ip=` + v.K8S.PodIP + `/` + mask + `
+gateway=` + gateway + `
+physical_interface=` + intf + `
+[GATEWAY-0]
+[GATEWAY-1]
+[SERVICE-INSTANCE]
+netns_command=/usr/bin/opencontrail-vrouter-netns
+#netns_workers=1
+#netns_timeout=30`
 
 	return v.K8S.CreateConfig(vrouterConfig)
 }
 
-func (v *Vrouter) setInterfaceLabel() error {
+func getInterface(podIP string) (string, error) {
+	var intf string
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return err
+		return intf, err
 	}
 	vhostExists := false
 	var vhostMac net.HardwareAddr
@@ -104,82 +103,74 @@ func (v *Vrouter) setInterfaceLabel() error {
 		}
 	}
 	if vhostExists {
-		v.K8S.Pod.Labels["vhostExists"] = "true"
 		for _, iface := range ifaces {
-			if iface.HardwareAddr.String() == vhostMac.String() {
-				v.K8S.Pod.Labels["interface"] = iface.Name
-				v.K8S.Pod.Labels["mac"] = iface.HardwareAddr.String()
+			if iface.HardwareAddr.String() == vhostMac.String() && iface.Name != "vhost0" {
+				intf = iface.Name
 			}
 		}
 	} else {
-		v.K8S.Pod.Labels["vhostExists"] = "false"
 		for _, iface := range ifaces {
 			ifaceAddresses, err := iface.Addrs()
 			if err != nil {
-				return err
+				return intf, err
 			}
 			for _, ifaceAddress := range ifaceAddresses {
 				switch addressValue := ifaceAddress.(type) {
 				case *net.IPAddr:
-					if addressValue.IP.String() == v.K8S.PodIP {
-						v.K8S.Pod.Labels["interface"] = iface.Name
-						v.K8S.Pod.Labels["mac"] = iface.HardwareAddr.String()
+					if addressValue.IP.String() == podIP {
+						intf = iface.Name
 					}
 				}
 			}
 		}
 	}
-	return nil
+	return intf, nil
 }
 
-func (v *Vrouter) GetCIDR() error {
+func getCIDR(podIP string) (string, error) {
+	var mask string
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return err
+		return mask, err
 	}
 	for _, iface := range ifaces {
 		ifaceAddresses, err := iface.Addrs()
 		if err != nil {
-			return err
+			return mask, err
 		}
 		for _, ifaceAddress := range ifaceAddresses {
 			switch addressValue := ifaceAddress.(type) {
-			case *net.IPAddr:
-				if addressValue.IP.String() == v.K8S.PodIP {
-					mask := addressValue.IP.DefaultMask()
-					var cidrMask uint32
-					for idx, dotpart := range strings.Split(mask.String(), ".") {
-						part, _ := strconv.Atoi(dotpart)
-						cidrMask = cidrMask | uint32(part)<<uint32(24-idx*8)
-					}
-					v.K8S.Pod.Labels["mask"] = strconv.Itoa(int(cidrMask))
+			case *net.IPNet:
+				if addressValue.IP.String() == podIP {
+					size, _ := addressValue.Mask.Size()
+					mask = strconv.Itoa(size)
 				}
 			}
 		}
 	}
-	return nil
+	return mask, nil
 }
 
-func (v *Vrouter) GetGateway() error {
+func getGateway() (string, error) {
 	var gateway string
-	if gw, ok := v.K8S.OwnerLabels["Gateway"]; ok {
-		gateway = gw
-	} else {
-		r := strings.NewReader("/proc/net/route")
-		routes, err := GetRoutes(r)
-		if err != nil {
-			fmt.Printf("ERROR: %v", err)
-			return err
-		}
-		for i := range routes {
-			zero := net.IP{0, 0, 0, 0}
-			if routes[i].Destination.Equal(zero) {
-				gateway = routes[i].Gateway.String()
-			}
+	dat, err := ioutil.ReadFile("/proc/net/route")
+	if err != nil {
+		fmt.Printf("ERROR: %v", err)
+		return gateway, err
+	}
+	r := bytes.NewReader(dat)
+	routes, err := GetRoutes(r)
+	if err != nil {
+		fmt.Printf("ERROR: %v", err)
+		return gateway, err
+	}
+	for i := range routes {
+		zero := net.IP{0, 0, 0, 0}
+		if routes[i].Destination.Equal(zero) {
+			gateway = routes[i].Gateway.String()
 		}
 	}
-	v.K8S.Pod.Labels["gateway"] = gateway
-	return nil
+	return gateway, nil
 }
 
 func (v *Vrouter) CreateCertificate() error {
@@ -191,7 +182,6 @@ func (v *Vrouter) SetOwnerNameLabel() error {
 }
 
 func (v *Vrouter) GetControlNode() (string, int32, error) {
-
 	controlNodeName, ok := v.K8S.OwnerLabels["contrail-control-instance"]
 	if !ok {
 		controlNodeName = "contrail-control"
@@ -221,12 +211,12 @@ type Route struct {
 
 func GetRoutes(file io.Reader) ([]Route, error) {
 	routes := []Route{}
-
 	scanner := bufio.NewReader(file)
 	lineNum := 0
 	for {
 		line, err := scanner.ReadString('\n')
 		if err == io.EOF {
+			fmt.Println(err)
 			break
 		}
 		fields := strings.Fields(line)
