@@ -39,7 +39,7 @@ func (v *Vrouter) CreateConfig() error {
 	if gw, ok := v.K8S.OwnerLabels["Gateway"]; ok {
 		gateway = gw
 	} else {
-		gateway, err = getGateway()
+		gateway, err = getGateway(intf)
 		if err != nil {
 			return err
 		}
@@ -151,7 +151,7 @@ func getCIDR(podIP string) (string, error) {
 	return mask, nil
 }
 
-func getGateway() (string, error) {
+func getGateway(intf string) (string, error) {
 	var gateway string
 	dat, err := ioutil.ReadFile("/proc/net/route")
 	if err != nil {
@@ -167,7 +167,11 @@ func getGateway() (string, error) {
 	for i := range routes {
 		zero := net.IP{0, 0, 0, 0}
 		if routes[i].Destination.Equal(zero) {
-			gateway = routes[i].Gateway.String()
+			if routes[i].Interface == intf {
+				gateway = routes[i].Gateway.String()
+				break
+			}
+
 		}
 	}
 	return gateway, nil
