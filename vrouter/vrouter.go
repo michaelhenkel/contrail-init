@@ -85,7 +85,7 @@ netns_command=/usr/bin/opencontrail-vrouter-netns
 #netns_workers=1
 #netns_timeout=30`
 
-	return v.K8S.CreateConfig(vrouterConfig, v.K8S.Type+"-"+v.K8S.Hostname+".conf")
+	return v.K8S.CreateConfig(vrouterConfig, "contrail-vrouter-"+v.K8S.Hostname+".conf")
 }
 
 func getInterface(podIP string) (string, error) {

@@ -110,8 +110,8 @@ spec:
           mountPath: /etc/podinfo
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        command: ["sh","-c","while true; do sleep 10;done"]
-        #command: ["/contrail-init"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -201,8 +201,8 @@ spec:
           mountPath: /etc/podinfo
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        command: ["sh","-c","while true; do sleep 10;done"]
-        #command: ["/contrail-init"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
