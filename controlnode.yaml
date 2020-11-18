@@ -134,8 +134,8 @@ spec:
       - name: contrail-control
         image: michaelhenkel/contrail-control:distroless
         imagePullPolicy: Always
-        #command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
-        command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-control --conf_file /etc/contrail/contrail-control-${HOSTNAME}.conf"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -196,8 +196,8 @@ spec:
           mountPath: /etc/podinfo
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        command: ["sh","-c","while true; do sleep 10;done"]
-        #command: ["/contrail-init"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -279,8 +279,8 @@ spec:
       containers:
       - name: contrail-vrouter-agent
         image: michaelhenkel/contrail-agent:distroless
-        #command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-vrouter-agent --config_file /etc/contrail/contrail-vrouter-${HOSTNAME}.conf"]
-        command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-vrouter-agent --config_file /etc/contrail/contrail-vrouter-${HOSTNAME}.conf"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
         securityContext:
           privileged: true
           capabilities:
@@ -299,6 +299,10 @@ spec:
           mountPath: /etc/contrail
         - name: secret-volume
           mountPath: "/etc/contrailkeys"
+        - name: var_run_contrail
+          mountPath: "/var/run/contrail"
+        - name: var_lib_contrail
+          mountPath: "/var/lib/contrail"
       volumes:
       - name: podinfo
         downwardAPI:
@@ -312,3 +316,160 @@ spec:
       - name: secret-volume
         secret:
           secretName: contrail-vrouter-master-secret
+      - name: var_run_contrail
+        hostPath:
+          path: /var/run/contrail
+      - name: var_lib_contrail
+        hostPath:
+          path: /var/lib/contrail
+---
+#Contrail CNI
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contrail-cni-configmap
+  namespace: contrail
+data:
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: contrail-cni-secret
+  namespace: contrail
+data:
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: contrail-cni
+  namespace: contrail
+  labels:
+    app: contrail-cni
+spec:
+  selector:
+    matchLabels:
+      app: contrail-cni
+  template:
+    metadata:
+      labels:
+        app: contrail-cni
+    spec:
+      serviceAccountName: contrail-control-serviceaccount
+      hostNetwork: true
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      initContainers:
+      - name: contrail-init
+        volumeMounts:
+        - name: podinfo
+          mountPath: /etc/podinfo
+        - name: config-volume
+          mountPath: /etc/cni
+        imagePullPolicy: Always
+        image: michaelhenkel/contrail-init:distroless
+        #command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["/contrail-init"]
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: PODNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: PODIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: APP
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app']
+      - name: contrail-cni-client
+        volumeMounts:
+        - name: podinfo
+          mountPath: /etc/podinfo
+        - name: socket-volume
+          mountPath: "/var/run/contrail"
+        - name: socket-volume
+          mountPath: "/var/run/contrail"
+        imagePullPolicy: Always
+        image: michaelhenkel/contrail-cni-client:distroless
+        #command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["sh","-c","cp /contrail-cni-client /opt/cni/bin/contrail-k8s-cni"]
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: PODNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: PODIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: APP
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app']
+      containers:
+      - name: contrail-cni-server
+        image: michaelhenkel/contrail-cni-server:distroless
+        command: ["sh","-c","mkdir -p /var/lib/contrail/ports/vm && /contrail-cni-server"]
+        command: ["sh","-c","while true; do sleep 10;done"]
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: PODIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/contrail
+        - name: secret-volume
+          mountPath: "/etc/contrailkeys"
+        - name: var_run_contrail
+          mountPath: "/var/run/contrail"
+        - name: var_lib_contrail
+          mountPath: "/var/lib/contrail"
+      volumes:
+      - name: var_run_contrail
+        hostPath:
+          path: /var/run/contrail
+      - name: var_lib_contrail
+        hostPath:
+          path: /var/lib/contrail
+      - name: socket
+        hostPath:
+          path: /var/run/contrail
+      - name: podinfo
+        downwardAPI:
+          items:
+          - path: "labels"
+            fieldRef:
+              fieldPath: metadata.labels
+      - name: config-volume
+        configMap:
+          name: contrail-cni-configmap
+      - name: secret-volume
+        secret:
+          secretName: contrail-cni-secret

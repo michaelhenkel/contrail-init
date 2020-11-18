@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"time"
 
 	"k8s.io/api/certificates/v1beta1"
@@ -87,7 +88,36 @@ func (k *K8S) SetOwnerNameLabel() error {
 	return nil
 }
 
-func (k *K8S) CreateConfig(configData string) error {
+func New(clientset *kubernetes.Clientset, namespace string) (*K8S, error) {
+	ctx := context.Background()
+	kubernetesService, err := clientset.CoreV1().Services("default").Get(ctx, "kubernetes", metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, os.Getenv("PODNAME"), metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	k8s := &K8S{
+		ClusterIP:   kubernetesService.Spec.ClusterIP,
+		ClusterPort: kubernetesService.Spec.Ports[0].Port,
+		Namespace:   namespace,
+		Hostname:    pod.Spec.NodeName,
+		ClientSet:   clientset,
+		Service:     kubernetesService,
+		PodName:     pod.Name,
+		PodIP:       pod.Status.PodIP,
+		Pod:         pod,
+	}
+	if err := k8s.SetOwnerNameLabel(); err != nil {
+		return nil, err
+	}
+	return k8s, nil
+
+}
+
+func (k *K8S) CreateConfig(configData string, configName string) error {
 	configMap := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
@@ -97,7 +127,7 @@ func (k *K8S) CreateConfig(configData string) error {
 			Name:      k.OwnerName + "-configmap",
 			Namespace: k.Namespace,
 		},
-		Data: map[string]string{k.Type + "-" + k.Hostname + ".conf": configData},
+		Data: map[string]string{configName: configData},
 	}
 
 	ctx := context.Background()
