@@ -99,6 +99,9 @@ spec:
       - name: secret-volume
         secret:
           secretName: contrail-control-secret
+      - name: var-log-contrail
+        hostPath:
+          path: /var/log/contrail
       serviceAccountName: contrail-control-serviceaccount
       initContainers:
       - name: contrail-init
@@ -107,8 +110,8 @@ spec:
           mountPath: /etc/podinfo
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        #command: ["sh","-c","while true; do sleep 10;done"]
-        command: ["/contrail-init"]
+        command: ["sh","-c","while true; do sleep 10;done"]
+        #command: ["/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -146,6 +149,8 @@ spec:
           mountPath: /etc/contrail
         - name: secret-volume
           mountPath: "/etc/contrailkeys"
+        - name: var-log-contrail
+          mountPath: /var/log/contrail
 ---
 #Contrail Vrouter Master
 apiVersion: v1
@@ -196,8 +201,8 @@ spec:
           mountPath: /etc/podinfo
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        #command: ["sh","-c","while true; do sleep 10;done"]
-        command: ["/contrail-init"]
+        command: ["sh","-c","while true; do sleep 10;done"]
+        #command: ["/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -297,6 +302,8 @@ spec:
         volumeMounts:
         - name: config-volume
           mountPath: /etc/contrail
+        - name: var-log-contrail
+          mountPath: /var/log/contrail
         - name: secret-volume
           mountPath: "/etc/contrailkeys"
         - name: var-run-contrail
@@ -322,6 +329,9 @@ spec:
       - name: var-lib-contrail
         hostPath:
           path: /var/lib/contrail
+      - name: var-log-contrail
+        hostPath:
+          path: /var/log/contrail
 ---
 #Contrail CNI
 apiVersion: v1
@@ -365,15 +375,10 @@ spec:
         operator: Exists
       initContainers:
       - name: contrail-init
-        volumeMounts:
-        - name: podinfo
-          mountPath: /etc/podinfo
-        - name: config-volume
-          mountPath: /etc/cni
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
-        #command: ["/contrail-init"]
+        #command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
+        command: ["/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -397,16 +402,18 @@ spec:
               fieldPath: metadata.labels['app']
       - name: contrail-cni-client
         volumeMounts:
+        - name: config-volume
+          mountPath: /cni_config
         - name: podinfo
           mountPath: /etc/podinfo
-        - name: var-run-contrail
-          mountPath: "/var/run/contrail"
-        - name: var-lib-contrail
-          mountPath: "/var/lib/contrail"
+        - name: opt-cni-bin
+          mountPath: "/opt/cni/bin"
+        - name: etc-cni-net-d
+          mountPath: "/etc/cni/net.d"
         imagePullPolicy: Always
         image: michaelhenkel/contrail-cni-client:distroless
-        command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
-        #command: ["sh","-c","cp /contrail-cni-client /opt/cni/bin/contrail-k8s-cni"]
+        #command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
+        command: ["sh","-c","mkdir -p /opt/cni/bin && cp /cni_config/10-contrail.conf /etc/cni/net.d/10-contrail.conf && cp /contrail_cni_client /opt/cni/bin/contrail-k8s-cni"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -431,8 +438,8 @@ spec:
       containers:
       - name: contrail-cni-server
         image: michaelhenkel/contrail-cni-server:distroless
-        command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
-        #command: ["sh","-c","mkdir -p /var/lib/contrail/ports/vm && /contrail-cni-server"]
+        #command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
+        command: ["sh","-c","mkdir -p /var/lib/contrail/ports/vm && mkdir -p /var/log/contrail/cni && /contrail_cni_server"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -451,13 +458,24 @@ spec:
           mountPath: "/var/run/contrail"
         - name: var-lib-contrail
           mountPath: "/var/lib/contrail"
+        - name: var-log-contrail
+          mountPath: "/var/log/contrail"
       volumes:
       - name: var-run-contrail
         hostPath:
           path: /var/run/contrail
+      - name: var-log-contrail
+        hostPath:
+          path: /var/log/contrail
       - name: var-lib-contrail
         hostPath:
           path: /var/lib/contrail
+      - name: opt-cni-bin
+        hostPath:
+          path: /opt/cni/bin
+      - name: etc-cni-net-d
+        hostPath:
+          path: /etc/cni/net.d
       - name: socket
         hostPath:
           path: /var/run/contrail

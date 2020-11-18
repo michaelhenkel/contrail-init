@@ -167,11 +167,9 @@ func getGateway(intf string) (string, error) {
 	for i := range routes {
 		zero := net.IP{0, 0, 0, 0}
 		if routes[i].Destination.Equal(zero) {
-			if routes[i].Interface == intf {
-				gateway = routes[i].Gateway.String()
-				break
-			}
-
+			gateway = routes[i].Gateway.String()
+			fmt.Println("gateway:", gateway)
+			break
 		}
 	}
 	return gateway, nil
