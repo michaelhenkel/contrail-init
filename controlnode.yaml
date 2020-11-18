@@ -280,7 +280,7 @@ spec:
       - name: contrail-vrouter-agent
         image: michaelhenkel/contrail-agent:distroless
         command: ["sh","-c","cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt >> /etc/ssl/certs/ca-certificates.crt && /contrail-vrouter-agent --config_file /etc/contrail/contrail-vrouter-${HOSTNAME}.conf"]
-        #command: ["sh","-c","while true; do sleep 10;done"]
+        #command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
         securityContext:
           privileged: true
           capabilities:
@@ -299,9 +299,9 @@ spec:
           mountPath: /etc/contrail
         - name: secret-volume
           mountPath: "/etc/contrailkeys"
-        - name: var_run_contrail
+        - name: var-run-contrail
           mountPath: "/var/run/contrail"
-        - name: var_lib_contrail
+        - name: var-lib-contrail
           mountPath: "/var/lib/contrail"
       volumes:
       - name: podinfo
@@ -316,10 +316,10 @@ spec:
       - name: secret-volume
         secret:
           secretName: contrail-vrouter-master-secret
-      - name: var_run_contrail
+      - name: var-run-contrail
         hostPath:
           path: /var/run/contrail
-      - name: var_lib_contrail
+      - name: var-lib-contrail
         hostPath:
           path: /var/lib/contrail
 ---
@@ -372,8 +372,8 @@ spec:
           mountPath: /etc/cni
         imagePullPolicy: Always
         image: michaelhenkel/contrail-init:distroless
-        #command: ["sh","-c","while true; do sleep 10;done"]
-        command: ["/contrail-init"]
+        command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
+        #command: ["/contrail-init"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -399,14 +399,14 @@ spec:
         volumeMounts:
         - name: podinfo
           mountPath: /etc/podinfo
-        - name: socket-volume
+        - name: var-run-contrail
           mountPath: "/var/run/contrail"
-        - name: socket-volume
-          mountPath: "/var/run/contrail"
+        - name: var-lib-contrail
+          mountPath: "/var/lib/contrail"
         imagePullPolicy: Always
         image: michaelhenkel/contrail-cni-client:distroless
-        #command: ["sh","-c","while true; do sleep 10;done"]
-        command: ["sh","-c","cp /contrail-cni-client /opt/cni/bin/contrail-k8s-cni"]
+        command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
+        #command: ["sh","-c","cp /contrail-cni-client /opt/cni/bin/contrail-k8s-cni"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -431,8 +431,8 @@ spec:
       containers:
       - name: contrail-cni-server
         image: michaelhenkel/contrail-cni-server:distroless
-        command: ["sh","-c","mkdir -p /var/lib/contrail/ports/vm && /contrail-cni-server"]
-        command: ["sh","-c","while true; do sleep 10;done"]
+        command: ["sh","-c","while true; do if [[ -d /tmp/bla ]]; then break; fi; sleep 5;done"]
+        #command: ["sh","-c","mkdir -p /var/lib/contrail/ports/vm && /contrail-cni-server"]
         env:
         - name: HOSTNAME
           valueFrom:
@@ -447,15 +447,15 @@ spec:
           mountPath: /etc/contrail
         - name: secret-volume
           mountPath: "/etc/contrailkeys"
-        - name: var_run_contrail
+        - name: var-run-contrail
           mountPath: "/var/run/contrail"
-        - name: var_lib_contrail
+        - name: var-lib-contrail
           mountPath: "/var/lib/contrail"
       volumes:
-      - name: var_run_contrail
+      - name: var-run-contrail
         hostPath:
           path: /var/run/contrail
-      - name: var_lib_contrail
+      - name: var-lib-contrail
         hostPath:
           path: /var/lib/contrail
       - name: socket
