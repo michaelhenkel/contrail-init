@@ -7,13 +7,18 @@ metadata:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
- name: contrail-control-serviceaccount
+ name: contrail-serviceaccount
  namespace: contrail
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+ name: contrail-kubemanager-serviceaccount
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: contrail-control-role
+  name: contrail-role
 rules:
 - apiGroups: ["*"]
   resources: ["*"]
@@ -22,14 +27,17 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: contrail-control-rolebinding
+  name: contrail-rolebinding
 subjects:
 - kind: ServiceAccount
-  name: contrail-control-serviceaccount
+  name: contrail-serviceaccount
   namespace: contrail
+- kind: ServiceAccount
+  name: contrail-kubemanager-serviceaccount
+  namespace: default
 roleRef:
   kind: ClusterRole
-  name: contrail-control-role
+  name: contrail-role
   apiGroup: rbac.authorization.k8s.io
 ---
 #Contrail Control
@@ -52,14 +60,12 @@ kind: ConfigMap
 metadata:
   name: contrail-control-configmap
   namespace: contrail
-data:
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: contrail-control-secret
   namespace: contrail
-data:
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -102,7 +108,7 @@ spec:
       - name: var-log-contrail
         hostPath:
           path: /var/log/contrail
-      serviceAccountName: contrail-control-serviceaccount
+      serviceAccountName: contrail-serviceaccount
       initContainers:
       - name: contrail-init
         volumeMounts:
@@ -152,20 +158,51 @@ spec:
         - name: var-log-contrail
           mountPath: /var/log/contrail
 ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contrail-kubemanager
+  #namespace: contrail
+  labels:
+    app: contrail-kubemanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: contrail-kubemanager
+  template:
+    metadata:
+      labels:
+        app: contrail-kubemanager
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      serviceAccountName: contrail-kubemanager-serviceaccount
+      containers:
+      - name: contrail-kubemanager
+        image: michaelhenkel/contrail-kubemanager:distroless
+        imagePullPolicy: Always
+        command: ["sh","-c","/kube-manager"]
+        #command: ["sh","-c","while true; do sleep 10;done"]
+---
 #Contrail Vrouter Master
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: contrail-vrouter-master-configmap
   namespace: contrail
-data:
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: contrail-vrouter-master-secret
   namespace: contrail
-data:
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -185,7 +222,7 @@ spec:
         name: contrail-vrouter-master
         app: contrail-vrouter
     spec:
-      serviceAccountName: contrail-control-serviceaccount
+      serviceAccountName: contrail-serviceaccount
       hostNetwork: true
       nodeSelector:
         node-role.kubernetes.io/master: ""
@@ -339,14 +376,12 @@ kind: ConfigMap
 metadata:
   name: contrail-cni-configmap
   namespace: contrail
-data:
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: contrail-cni-secret
   namespace: contrail
-data:
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -364,7 +399,7 @@ spec:
       labels:
         app: contrail-cni
     spec:
-      serviceAccountName: contrail-control-serviceaccount
+      serviceAccountName: contrail-serviceaccount
       hostNetwork: true
       nodeSelector:
         node-role.kubernetes.io/master: ""
